@@ -8,7 +8,7 @@ ROOTFS_IMG=/output/rootfs.ext4
 MINBASE_TAR=/output/minbase.tar.gz
 IMAGE_SIZE_MB=${IMAGE_SIZE_MB:-8192}   # rootfs size
 EFI_SIZE_MB=${EFI_SIZE_MB:-512}        # EFI partition size
-MIRROR=${MIRROR:-http://deb.debian.org/debian-ports}
+MIRROR=${MIRROR:-http://deb.debian.org/debian}
 HOSTNAME=${HOSTNAME:-riscv-debian}
 ROOT_PASSWORD=${ROOT_PASSWORD:-root}
 USER_NAME=${USER_NAME:-user}
@@ -178,15 +178,6 @@ if [ "${INSTALL_XFCE}" = "true" ]; then
 
     # task-xfce-desktop is the correct metapackage - handles all deps properly
     apt-get install -y task-xfce-desktop
-
-    # Mesa for software rendering (no proprietary GPU drivers)
-    apt-get install -y \
-        libgl1-mesa-dri \
-        libegl1-mesa \
-        libgles2-mesa \
-        mesa-common-dev \
-        mesa-vulkan-drivers \
-        libgbm1
 
     # Plymouth boot splash
     apt-get install -y plymouth plymouth-themes
