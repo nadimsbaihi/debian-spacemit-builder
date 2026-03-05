@@ -9,7 +9,7 @@ services:
     environment:
       - IMAGE_SIZE_MB=8192           # rootfs.ext4 size in MB
       - EFI_SIZE_MB=512              # efi.img size in MB
-      - MIRROR=http://deb.debian.org/debian-ports
+      - MIRROR=http://deb.debian.org/debian
       - HOSTNAME=riscv-debian
       - ROOT_PASSWORD=root           # Change this!
       - USER_NAME=user               # Regular user account
