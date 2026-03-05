@@ -56,17 +56,17 @@ umount_fs() {
 }
 
 # ─── Step 1: Enable binfmt for RISC-V ────────────────────────────────────────
-inf "[1/8] Registering QEMU binfmt..."
+inf "[1/9] Registering QEMU binfmt..."
 update-binfmts --enable qemu-riscv64 2>/dev/null || true
 
 # ─── Step 2: Debootstrap (with minbase cache) ────────────────────────────────
 if [ -f "$MINBASE_TAR" ]; then
-    inf "[2/8] Found minbase cache, extracting..."
+    inf "[2/9] Found minbase cache, extracting..."
     rm -rf $ROOTFS
     mkdir -p $ROOTFS
     tar -xzf "$MINBASE_TAR" -C "$ROOTFS"
 else
-    inf "[2/8] Running debootstrap (minbase)..."
+    inf "[2/9] Running debootstrap (minbase)..."
     rm -rf $ROOTFS
     debootstrap \
         --arch=riscv64 \
@@ -76,19 +76,19 @@ else
         $ROOTFS \
         $MIRROR
 
-    inf "[2/8] Copying QEMU static binary..."
+    inf "[2/9] Copying QEMU static binary..."
     cp /usr/bin/qemu-riscv64-static $ROOTFS/usr/bin/
 
-    inf "[2/8] Running debootstrap second stage..."
+    inf "[2/9] Running debootstrap second stage..."
     chroot $ROOTFS /debootstrap/debootstrap --second-stage
 
-    inf "[2/8] Caching minbase tarball for future runs..."
+    inf "[2/9] Caching minbase tarball for future runs..."
     umount_fs $ROOTFS
     tar -czf "$MINBASE_TAR" -C "$ROOTFS" .
 fi
 
 # ─── Step 3: Configure rootfs ─────────────────────────────────────────────────
-inf "[3/8] Configuring rootfs..."
+inf "[3/9] Configuring rootfs..."
 mount_fs $ROOTFS
 
 # DNS for build time
@@ -122,7 +122,7 @@ EOF
 
 mkdir -p $ROOTFS/boot/efi
 
-# Install debiankeyring first (unauthenticated)
+# Install debian keyring first (unauthenticated)
 chroot $ROOTFS /bin/bash -c "
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export DEBIAN_FRONTEND=noninteractive
@@ -160,8 +160,8 @@ apt-get install -y \
     locales \
     tzdata \
     keyboard-configuration \
-    console-setup \
-   
+    console-setup
+
 # ─── XFCE desktop ─────────────────────────────────────────────────────────────
 if [ "${INSTALL_XFCE}" = "true" ]; then
     echo "Installing XFCE desktop..."
@@ -197,12 +197,14 @@ echo "tzdata tzdata/Areas select \$TZ_AREA"           | debconf-set-selections
 echo "tzdata tzdata/Zones/\$TZ_AREA select \$TZ_ZONE" | debconf-set-selections
 rm -f /etc/timezone /etc/localtime
 dpkg-reconfigure --frontend=noninteractive tzdata
-# ─── NTP ──────────────────────────────────────────────────────────────────
+
+# ─── NTP ──────────────────────────────────────────────────────────────────────
 mkdir -p /etc/systemd/timesyncd.conf.d
 cat > /etc/systemd/timesyncd.conf.d/ntp.conf <<NTPEOF
 [Time]
 NTP=pool.ntp.org
 NTPEOF
+
 # ─── Persistent PATH ──────────────────────────────────────────────────────────
 echo 'PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' > /etc/environment
 
@@ -227,6 +229,7 @@ echo "nameserver 127.0.0.53" > /etc/resolv.conf
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 CHROOT
+
 # ─── Step 4: Install GRUB and kernel ──────────────────────────────────────────
 inf "[4/9] Installing GRUB and kernel..."
 
@@ -246,7 +249,7 @@ else
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y grub-efi-riscv64-bin
+apt-get install -y grub2-common grub-efi-riscv64-bin
 CHROOT
 fi
 
@@ -264,14 +267,13 @@ if ! command -v grub-mkimage &>/dev/null; then
 fi
 
 # --- 4b: Install kernel debs if provided ---
-inf "[4/8] Installing kernel..."
-if ls /input/*.deb 1>/dev/null 2>&1; then
-    inf "Found .deb files in /input, installing..."
-    cp /input/*.deb $ROOTFS/tmp/
+if ls /input/linux-*.deb 1>/dev/null 2>&1; then
+    inf "Found kernel .deb files in /input, installing..."
+    cp /input/linux-*.deb $ROOTFS/tmp/
     chroot $ROOTFS /bin/bash <<CHROOT
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export DEBIAN_FRONTEND=noninteractive
-dpkg -i /tmp/linux-image-*[0-9].deb 2>/dev/null || true
+dpkg -i /tmp/linux-image-*.deb   2>/dev/null || true
 dpkg -i /tmp/linux-headers-*.deb 2>/dev/null || true
 # Index kernel modules
 KVER=\$(ls /lib/modules/ | grep -v placeholder | head -1)
@@ -282,16 +284,16 @@ fi
 rm -f /tmp/*.deb
 CHROOT
 else
-    inf "No .deb files found in /input, skipping kernel install."
+    inf "No kernel .deb files found in /input, skipping kernel install."
     inf "Place kernel .deb files in the 'input' directory to install them."
 fi
 
 # ─── Step 5: Install firmware if provided ─────────────────────────────────────
-inf "[5/8] Installing firmware..."
-if [ -f /input/rtthread-n308.elf ]; then
-    inf "Found rtthread-n308.elf, installing as esos.elf..."
+inf "[5/9] Installing firmware..."
+if [ -f /input/rtthead-n308.elf ]; then
+    inf "Found rtthead-n308.elf, installing as esos.elf..."
     mkdir -p $ROOTFS/lib/firmware
-    cp /input/rtthread-n308.elf $ROOTFS/lib/firmware/esos.elf
+    cp /input/rtthead-n308.elf $ROOTFS/lib/firmware/esos.elf
 fi
 
 # Update initramfs after kernel + firmware install
@@ -300,50 +302,102 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 update-initramfs -u -k all 2>/dev/null || true
 CHROOT
 
-# ─── Step 6: Unmount pseudo-filesystems ───────────────────────────────────────
-inf "[6/8] Unmounting pseudo-filesystems..."
-umount_fs $ROOTFS
+# ─── Step 6: Build GRUB EFI binary (on host) ─────────────────────────────────
+inf "[6/9] Building GRUB EFI binary..."
 
-# ─── Step 7: Create EFI image ─────────────────────────────────────────────────
-inf "[7/8] Creating EFI image (${EFI_SIZE_MB}MB)..."
-mkdir -p /output
+# Detect installed kernel version
+KVER=$(ls "$ROOTFS/lib/modules/" 2>/dev/null | grep -v placeholder | head -1)
 
-dd if=/dev/zero of=$EFI_IMG bs=1M count=$EFI_SIZE_MB status=progress
-mkfs.fat -F32 -i "$(echo $UUID_EFI | tr -d '-' | head -c 8)" $EFI_IMG
+# Verify GRUB modules directory exists
+GRUB_MOD_DIR="$ROOTFS/usr/lib/grub/riscv64-efi"
+if [ ! -d "$GRUB_MOD_DIR" ]; then
+    err "GRUB modules directory not found at $GRUB_MOD_DIR — GRUB installation may have failed"
+fi
 
-# Mount EFI image via loop to run grub-install
-LOOP_EFI=$(losetup -f)
-losetup $LOOP_EFI $EFI_IMG
-mkdir -p /mnt/efi
-mount $LOOP_EFI /mnt/efi
-mkdir -p $ROOTFS/boot/efi
-mount --bind /mnt/efi $ROOTFS/boot/efi
+mkdir -p "$ROOTFS/boot/efi/EFI/debian" "$ROOTFS/boot/efi/EFI/BOOT" "$ROOTFS/boot/grub"
 
-mount_fs $ROOTFS
+# Embedded early config: searches for the real grub.cfg on the ext4 partition
+cat > /tmp/grub-early.cfg <<'EARLYCFG'
+search --file --set=root /boot/grub/grub.cfg
+set prefix=($root)/boot/grub
+configfile $prefix/grub.cfg
+EARLYCFG
 
-chroot $ROOTFS /bin/bash <<CHROOT
-export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-grub-install \
-    --target=riscv64-efi \
-    --efi-directory=/boot/efi \
-    --bootloader-id=debian \
-    --recheck \
-    --no-nvram
+# Build EFI binary on the HOST (grub-mkimage is a host-arch tool; the riscv64
+# modules in the chroot are just data files it reads, no QEMU needed)
+grub-mkimage \
+    --directory="$ROOTFS/usr/lib/grub/riscv64-efi" \
+    --config=/tmp/grub-early.cfg \
+    --prefix=/boot/grub \
+    --output="$ROOTFS/boot/efi/EFI/debian/grubriscv64.efi" \
+    --format=riscv64-efi \
+    normal search search_fs_uuid search_fs_file \
+    ext2 fat part_gpt linux echo gzio
 
-update-grub
+rm -f /tmp/grub-early.cfg
+
+# Verify EFI binary was created
+if [ ! -f "$ROOTFS/boot/efi/EFI/debian/grubriscv64.efi" ]; then
+    err "GRUB EFI binary not found — grub-mkimage failed"
+fi
 
 # Fallback EFI binary for EDK2 auto-discovery
-mkdir -p /boot/efi/EFI/BOOT
-cp /boot/efi/EFI/debian/grubriscv64.efi /boot/efi/EFI/BOOT/BOOTRISCV64.EFI
-CHROOT
+cp "$ROOTFS/boot/efi/EFI/debian/grubriscv64.efi" \
+   "$ROOTFS/boot/efi/EFI/BOOT/BOOTRISCV64.EFI"
 
-umount_fs $ROOTFS
-umount $ROOTFS/boot/efi
-umount /mnt/efi
-losetup -d $LOOP_EFI
+# Install GRUB modules onto rootfs so update-grub works at runtime
+if [ -d "$GRUB_MOD_DIR" ]; then
+    cp -r "$GRUB_MOD_DIR" "$ROOTFS/boot/grub/riscv64-efi"
+fi
 
-# ─── Step 8: Create rootfs ext4 image ─────────────────────────────────────────
-inf "[8/8] Creating rootfs.ext4 (${IMAGE_SIZE_MB}MB)..."
+# Write grub.cfg
+cat > "$ROOTFS/boot/grub/grub.cfg" <<GRUBCFG
+set default=0
+set timeout=5
+
+menuentry "Debian Trixie (RISC-V)" {
+    linux /boot/vmlinuz-$KVER root=UUID=$UUID_ROOTFS console=ttyS0,115200 
+    initrd /boot/initrd.img-$KVER
+}
+GRUBCFG
+
+# ─── Step 7: Unmount pseudo-filesystems ───────────────────────────────────────
+inf "[7/9] Unmounting pseudo-filesystems..."
+umount_fs "$ROOTFS"
+sync
+sleep 1
+
+# ─── Step 8: Create partition images ─────────────────────────────────────────
+inf "[8/9] Creating partition images..."
+
+# --- EFI partition (FAT32, built with mtools — no loop device needed) ---
+inf "Creating EFI partition image (${EFI_SIZE_MB}MiB)..."
+truncate -s ${EFI_SIZE_MB}M /build/efi.img
+mkfs.fat -F32 -n EFI /build/efi.img
+
+# Copy EFI content into the FAT image using mtools
+inf "Populating EFI partition..."
+if [ -f "$ROOTFS/boot/efi/EFI/debian/grubriscv64.efi" ]; then
+    mmd -i /build/efi.img ::/EFI
+    mmd -i /build/efi.img ::/EFI/debian
+    mmd -i /build/efi.img ::/EFI/BOOT
+    mcopy -i /build/efi.img "$ROOTFS/boot/efi/EFI/debian/grubriscv64.efi" ::/EFI/debian/grubriscv64.efi
+    mcopy -i /build/efi.img "$ROOTFS/boot/efi/EFI/BOOT/BOOTRISCV64.EFI"  ::/EFI/BOOT/BOOTRISCV64.EFI
+    # Verify
+    mdir -i /build/efi.img -s ::/
+else
+    err "GRUB EFI binary not found at $ROOTFS/boot/efi/EFI/debian/grubriscv64.efi — grub-mkimage may have failed"
+fi
+
+# Read back the FAT volume serial (used as UUID in fstab)
+EFI_UUID=$(blkid -s UUID -o value /build/efi.img)
+inf "EFI UUID: $EFI_UUID"
+
+# Copy EFI image to output
+cp /build/efi.img "$EFI_IMG"
+
+# ─── Step 9: Create rootfs ext4 image ─────────────────────────────────────────
+inf "[9/9] Creating rootfs.ext4 (${IMAGE_SIZE_MB}MB)..."
 
 # mke2fs -d populates the filesystem directly from the directory —
 # no loop device, no mount, no rsync needed.
