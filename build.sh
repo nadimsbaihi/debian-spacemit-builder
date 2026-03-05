@@ -99,8 +99,7 @@ EOF
 
 # Apt sources
 cat > $ROOTFS/etc/apt/sources.list <<EOF
-deb http://deb.debian.org/debian-ports trixie main
-deb http://deb.debian.org/debian-ports unreleased main
+deb http://deb.debian.org/debian trixie main
 EOF
 
 # Hostname
@@ -123,12 +122,12 @@ EOF
 
 mkdir -p $ROOTFS/boot/efi
 
-# Install debian-ports keyring first (unauthenticated)
+# Install debiankeyring first (unauthenticated)
 chroot $ROOTFS /bin/bash -c "
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -o Acquire::AllowInsecureRepositories=true || true
-apt-get install -y --allow-unauthenticated debian-ports-archive-keyring || true
+apt-get install -y --allow-unauthenticated debian-archive-keyring || true
 apt-get update
 "
 
@@ -157,15 +156,12 @@ apt-get install -y \
     kmod \
     network-manager \
     initramfs-tools \
-    grub-efi-riscv64 \
-    grub-efi-riscv64-bin \
     openssh-server \
     locales \
     tzdata \
     keyboard-configuration \
     console-setup \
-    ntp
-
+   
 # ─── XFCE desktop ─────────────────────────────────────────────────────────────
 if [ "${INSTALL_XFCE}" = "true" ]; then
     echo "Installing XFCE desktop..."
@@ -201,10 +197,12 @@ echo "tzdata tzdata/Areas select \$TZ_AREA"           | debconf-set-selections
 echo "tzdata tzdata/Zones/\$TZ_AREA select \$TZ_ZONE" | debconf-set-selections
 rm -f /etc/timezone /etc/localtime
 dpkg-reconfigure --frontend=noninteractive tzdata
-
-# ─── NTP ──────────────────────────────────────────────────────────────────────
-sed -i 's/^#NTP=.*/NTP=pool.ntp.org/' /etc/systemd/timesyncd.conf
-
+# ─── NTP ──────────────────────────────────────────────────────────────────
+mkdir -p /etc/systemd/timesyncd.conf.d
+cat > /etc/systemd/timesyncd.conf.d/ntp.conf <<NTPEOF
+[Time]
+NTP=pool.ntp.org
+NTPEOF
 # ─── Persistent PATH ──────────────────────────────────────────────────────────
 echo 'PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' > /etc/environment
 
@@ -229,8 +227,43 @@ echo "nameserver 127.0.0.53" > /etc/resolv.conf
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 CHROOT
+# ─── Step 4: Install GRUB and kernel ──────────────────────────────────────────
+inf "[4/9] Installing GRUB and kernel..."
 
-# ─── Step 4: Install kernel debs if provided ──────────────────────────────────
+# --- 4a: Install GRUB (from /input debs or from apt) ---
+if ls /input/grub-*.deb 1>/dev/null 2>&1; then
+    inf "Found GRUB .deb files in /input, installing..."
+    cp /input/grub-*.deb "$ROOTFS/tmp/"
+    chroot "$ROOTFS" /bin/bash <<CHROOT
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export DEBIAN_FRONTEND=noninteractive
+dpkg -i --force-depends /tmp/grub-*.deb || true
+rm -f /tmp/grub-*.deb
+CHROOT
+else
+    inf "No GRUB .deb files in /input, installing grub-efi-riscv64 from apt..."
+    chroot "$ROOTFS" /bin/bash <<CHROOT
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y grub-efi-riscv64-bin
+CHROOT
+fi
+
+# Verify GRUB riscv64-efi modules were installed (these are data files, not executables)
+if [ ! -d "$ROOTFS/usr/lib/grub/riscv64-efi" ]; then
+    err "GRUB riscv64-efi modules not found in chroot — GRUB installation may have failed"
+fi
+
+# Install grub-common on the host so we can run grub-mkimage natively
+# (the chroot's grub-mkimage is a riscv64 binary that can't execute on the host)
+if ! command -v grub-mkimage &>/dev/null; then
+    inf "Installing grub-common on host for grub-mkimage..."
+    apt-get update -qq
+    apt-get install -y -qq grub-common
+fi
+
+# --- 4b: Install kernel debs if provided ---
 inf "[4/8] Installing kernel..."
 if ls /input/*.deb 1>/dev/null 2>&1; then
     inf "Found .deb files in /input, installing..."
@@ -238,7 +271,7 @@ if ls /input/*.deb 1>/dev/null 2>&1; then
     chroot $ROOTFS /bin/bash <<CHROOT
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export DEBIAN_FRONTEND=noninteractive
-dpkg -i /tmp/linux-image-*.deb   2>/dev/null || true
+dpkg -i /tmp/linux-image-*[0-9].deb 2>/dev/null || true
 dpkg -i /tmp/linux-headers-*.deb 2>/dev/null || true
 # Index kernel modules
 KVER=\$(ls /lib/modules/ | grep -v placeholder | head -1)
