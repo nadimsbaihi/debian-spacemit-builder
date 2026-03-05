@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     curl \
     kmod \
+    uuid-runtime \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
