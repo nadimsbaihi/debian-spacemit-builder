@@ -290,10 +290,10 @@ fi
 
 # ─── Step 5: Install firmware if provided ─────────────────────────────────────
 inf "[5/9] Installing firmware..."
-if [ -f /input/rtthead-n308.elf ]; then
-    inf "Found rtthead-n308.elf, installing as esos.elf..."
+if [ -f /input/rtthread-n308.elf ]; then
+    inf "Found rtthread-n308.elf, installing as esos.elf..."
     mkdir -p $ROOTFS/lib/firmware
-    cp /input/rtthead-n308.elf $ROOTFS/lib/firmware/esos.elf
+    cp /input/rtthread-n308.elf $ROOTFS/lib/firmware/esos.elf
 fi
 
 # Update initramfs after kernel + firmware install
